@@ -18,8 +18,8 @@ class CommunityAdmin(admin.ModelAdmin):
 
 @admin.register(Activity)
 class ActivityAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "community", "status", "start_time", "created_by")
-    list_filter = ("status", "community", "type")
+    list_display = ("id", "title", "community", "activity_type", "status", "start_time", "created_by")
+    list_filter = ("status", "community", "activity_type")
     search_fields = ("title", "location")
 
 

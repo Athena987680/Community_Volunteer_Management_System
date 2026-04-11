@@ -40,8 +40,8 @@
           <el-input v-model="form.title" />
         </el-form-item>
         <el-form-item label="活动类型" required>
-          <el-select v-model="form.type" placeholder="请选择活动类型" style="width: 100%">
-            <el-option v-for="item in activityTypes" :key="item.id" :label="item.name" :value="item.name" />
+          <el-select v-model="form.activity_type" placeholder="请选择活动类型" style="width: 100%">
+            <el-option v-for="item in activityTypes" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="useOtherType" label="类型补充" required>
@@ -105,7 +105,7 @@ const saving = ref(false)
 
 const form = ref({
   title: '',
-  type: '',
+  activity_type: undefined as number | undefined,
   other_type: '',
   location: '',
   community: undefined as number | undefined,
@@ -117,7 +117,11 @@ const form = ref({
   description: '',
   cover_image: undefined as File | undefined,
 })
-const useOtherType = computed(() => form.value.type === '其他')
+const selectedTypeName = computed(() => {
+  const found = activityTypes.value.find(item => item.id === form.value.activity_type)
+  return found?.name || ''
+})
+const useOtherType = computed(() => selectedTypeName.value === '其他')
 
 const statusText = (status: string) => {
   const map: Record<string, string> = {
@@ -157,7 +161,7 @@ const handleCoverChange = (uploadFile: { raw?: File }) => {
 const resetForm = () => {
   form.value = {
     title: '',
-    type: '',
+    activity_type: undefined,
     other_type: '',
     location: '',
     community: undefined,
@@ -180,7 +184,7 @@ const openCreateDialog = () => {
 const openEditDialog = (row: Activity) => {
   editingId.value = row.id
   form.value.title = row.title
-  form.value.type = row.type
+  form.value.activity_type = row.activity_type || undefined
   form.value.other_type = row.other_type || ''
   form.value.location = row.location
   form.value.community = row.community
@@ -197,7 +201,7 @@ const openEditDialog = (row: Activity) => {
 const buildFormData = () => {
   const payload = new FormData()
   payload.append('title', form.value.title)
-  payload.append('type', form.value.type)
+  payload.append('activity_type', String(form.value.activity_type || ''))
   if (useOtherType.value && form.value.other_type.trim()) {
     payload.append('other_type', form.value.other_type.trim())
   }
@@ -218,7 +222,7 @@ const buildFormData = () => {
 }
 
 const submitForm = async () => {
-  if (!form.value.type) {
+  if (!form.value.activity_type) {
     ElMessage.warning('请选择活动类型')
     return
   }

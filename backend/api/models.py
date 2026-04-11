@@ -85,7 +85,12 @@ class Activity(models.Model):
     ]
 
     title = models.CharField(max_length=200, verbose_name="活动名称")
-    type = models.CharField(max_length=50, verbose_name="活动类型")
+    activity_type = models.ForeignKey(
+        ActivityType,
+        on_delete=models.PROTECT,
+        related_name="activities",
+        verbose_name="活动类型",
+    )
     other_type = models.CharField(max_length=80, null=True, blank=True, verbose_name="其他类型补充")
     location = models.CharField(max_length=200, verbose_name="活动地点")
     start_time = models.DateTimeField(verbose_name="开始时间")
@@ -116,6 +121,19 @@ class Activity(models.Model):
         verbose_name = "志愿活动"
         verbose_name_plural = verbose_name
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "community", "start_time"], name="idx_activity_scope"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(end_time__gt=models.F("start_time")),
+                name="ck_activity_end_after_start",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(deadline__lte=models.F("start_time")),
+                name="ck_activity_deadline_before_start",
+            ),
+        ]
 
 
 class Registration(models.Model):
@@ -147,6 +165,10 @@ class Registration(models.Model):
         verbose_name_plural = verbose_name
         unique_together = ["activity", "volunteer"]
         ordering = ["-apply_time"]
+        indexes = [
+            models.Index(fields=["activity", "status"], name="idx_reg_activity_status"),
+            models.Index(fields=["volunteer", "status"], name="idx_reg_vol_status"),
+        ]
 
 
 class Attendance(models.Model):
@@ -178,6 +200,9 @@ class Attendance(models.Model):
         verbose_name = "签到与服务时长记录"
         verbose_name_plural = verbose_name
         ordering = ["-registration__apply_time"]
+        indexes = [
+            models.Index(fields=["status", "reviewed_at"], name="idx_att_status_reviewed"),
+        ]
 
 
 class Notice(models.Model):
@@ -238,3 +263,8 @@ class ActivityComment(models.Model):
         verbose_name = "活动评论"
         verbose_name_plural = verbose_name
         ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["activity", "created_at"], name="idx_comment_activity_time"),
+            models.Index(fields=["activity", "parent"], name="idx_comment_activity_parent"),
+            models.Index(fields=["activity", "is_deleted"], name="idx_comment_activity_del"),
+        ]

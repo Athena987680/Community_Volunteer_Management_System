@@ -191,6 +191,8 @@ class ActivitySerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source="created_by.real_name", read_only=True)
     reviewer_name = serializers.CharField(source="reviewer.real_name", read_only=True)
     approved_count = serializers.SerializerMethodField()
+    type = serializers.CharField(source="activity_type.name", read_only=True)
+    activity_type_name = serializers.CharField(source="activity_type.name", read_only=True)
     type_display = serializers.SerializerMethodField()
 
     class Meta:
@@ -202,15 +204,17 @@ class ActivitySerializer(serializers.ModelSerializer):
         return obj.registrations.filter(status="approved").count()
 
     def get_type_display(self, obj):
-        if obj.type == "其他" and obj.other_type:
+        if obj.activity_type and obj.activity_type.name == "其他" and obj.other_type:
             return f"其他（{obj.other_type}）"
-        return obj.type
+        if obj.activity_type:
+            return obj.activity_type.name
+        return None
 
     def validate(self, attrs):
         start_time = attrs.get("start_time", getattr(self.instance, "start_time", None))
         end_time = attrs.get("end_time", getattr(self.instance, "end_time", None))
         deadline = attrs.get("deadline", getattr(self.instance, "deadline", None))
-        activity_type = attrs.get("type", getattr(self.instance, "type", None))
+        activity_type = attrs.get("activity_type", getattr(self.instance, "activity_type", None))
         other_type = attrs.get("other_type", getattr(self.instance, "other_type", None))
 
         if start_time and end_time and end_time <= start_time:
@@ -221,16 +225,15 @@ class ActivitySerializer(serializers.ModelSerializer):
         if not activity_type:
             raise serializers.ValidationError("请选择活动类型")
 
-        if activity_type == "其他":
+        if activity_type.name == "其他":
             other_type_text = (other_type or "").strip()
             if not other_type_text:
                 raise serializers.ValidationError("选择“其他”时必须填写类型补充")
             attrs["other_type"] = other_type_text
         else:
-            active_types = set(ActivityType.objects.filter(is_active=True).values_list("name", flat=True))
-            unchanged_existing_type = bool(self.instance and activity_type == self.instance.type)
-            if activity_type not in active_types and not unchanged_existing_type:
-                raise serializers.ValidationError("活动类型必须从系统预设类型中选择")
+            unchanged_existing_type = bool(self.instance and activity_type.id == getattr(self.instance.activity_type, "id", None))
+            if not activity_type.is_active and not unchanged_existing_type:
+                raise serializers.ValidationError("活动类型必须从系统启用类型中选择")
             attrs["other_type"] = None
         return attrs
 

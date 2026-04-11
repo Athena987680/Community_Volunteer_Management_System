@@ -283,14 +283,14 @@ class ActivityTypeViewSet(viewsets.ModelViewSet):
 
 
 class ActivityViewSet(viewsets.ModelViewSet):
-    queryset = Activity.objects.select_related("community", "created_by", "reviewer").all()
+    queryset = Activity.objects.select_related("community", "activity_type", "created_by", "reviewer").all()
     serializer_class = ActivitySerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         user = self.request.user
-        base_qs = Activity.objects.select_related("community", "created_by", "reviewer").all()
+        base_qs = Activity.objects.select_related("community", "activity_type", "created_by", "reviewer").all()
         if is_system_admin(user):
             return base_qs
         if is_community_admin(user):

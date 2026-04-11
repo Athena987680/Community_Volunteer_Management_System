@@ -33,7 +33,9 @@ export type ActivityStatus = 'pending' | 'approved' | 'rejected' | 'ongoing' | '
 export interface Activity {
   id: number
   title: string
-  type: string
+  type?: string
+  activity_type?: number | null
+  activity_type_name?: string
   type_display?: string
   other_type?: string | null
   location: string
