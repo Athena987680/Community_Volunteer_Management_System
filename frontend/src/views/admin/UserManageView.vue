@@ -37,10 +37,24 @@
             <el-tag :type="row.is_active ? 'success' : 'danger'">{{ row.is_active ? '启用' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="170" fixed="right">
+        <el-table-column label="操作" :width="isMobile ? 88 : 170" :fixed="isMobile ? undefined : 'right'">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="removeUser(row.id)">删除</el-button>
+            <template v-if="!isMobile">
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" @click="removeUser(row.id)">删除</el-button>
+            </template>
+            <el-dropdown v-else trigger="click" @command="(command: string) => handleMobileCommand(row, command)">
+              <el-button link type="primary">
+                操作
+                <el-icon><MoreFilled /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item command="delete">删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -107,9 +121,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { asList } from '@/utils/request'
 import type { User, Community } from '@/types'
+import { useIsMobile } from '@/composables/useIsMobile'
 
+const { isMobile } = useIsMobile()
+// 用户列表与社区字典数据。
 const users = ref<User[]>([])
 const communities = ref<Community[]>([])
+// 新增/编辑弹窗状态。
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const saving = ref(false)
@@ -134,6 +152,7 @@ const showSkillsField = computed(() => form.value.role === 'volunteer')
 watch(
   () => form.value.role,
   role => {
+    // 角色切换时同步清理不适用字段。
     if (role === 'system_admin') {
       form.value.community = undefined
       form.value.skills = ''
@@ -146,6 +165,7 @@ watch(
 )
 
 const roleText = (role: string) => {
+  // 角色枚举到中文文案。
   const map: Record<string, string> = {
     volunteer: '志愿者',
     community_admin: '社区管理员',
@@ -155,6 +175,7 @@ const roleText = (role: string) => {
 }
 
 const approvalText = (status?: string) => {
+  // 社区管理员审核状态文案。
   const map: Record<string, string> = {
     pending: '待审核',
     approved: '已通过',
@@ -164,6 +185,7 @@ const approvalText = (status?: string) => {
 }
 
 const approvalTagType = (status?: string) => {
+  // 社区管理员审核状态标签色。
   const map: Record<string, 'warning' | 'success' | 'danger' | 'info'> = {
     pending: 'warning',
     approved: 'success',
@@ -173,6 +195,7 @@ const approvalTagType = (status?: string) => {
 }
 
 const handleAvatarChange = (uploadFile: { raw?: File }) => {
+  // 头像上传前本地格式/大小校验。
   const file = uploadFile.raw
   if (!file) return
   if (!file.type.startsWith('image/')) {
@@ -189,6 +212,7 @@ const handleAvatarChange = (uploadFile: { raw?: File }) => {
 }
 
 const resetForm = () => {
+  // 初始化为新增用户默认值。
   form.value = {
     username: '',
     password: '',
@@ -211,6 +235,7 @@ const openCreate = () => {
 }
 
 const openEdit = (row: User) => {
+  // 编辑时按选中用户回填表单。
   editingId.value = row.id
   form.value.username = row.username
   form.value.password = ''
@@ -227,6 +252,7 @@ const openEdit = (row: User) => {
 }
 
 const buildPayload = () => {
+  // 使用 FormData 统一承载文本字段和头像文件。
   const payload = new FormData()
   payload.append('username', form.value.username)
   if (form.value.password) payload.append('password', form.value.password)
@@ -243,6 +269,7 @@ const buildPayload = () => {
 }
 
 const submit = async () => {
+  // 根据是否存在 editingId 区分新增和编辑。
   saving.value = true
   try {
     const payload = buildPayload()
@@ -264,6 +291,7 @@ const submit = async () => {
 }
 
 const removeUser = async (id: number) => {
+  // 删除用户前进行确认提示。
   await ElMessageBox.confirm('确认删除该用户吗？', '提示', { type: 'warning' })
   try {
     await api.delete(`/users/${id}/`)
@@ -274,17 +302,31 @@ const removeUser = async (id: number) => {
   }
 }
 
+const handleMobileCommand = async (row: User, command: string) => {
+  // 移动端操作菜单命令分发。
+  if (command === 'edit') {
+    openEdit(row)
+    return
+  }
+  if (command === 'delete') {
+    await removeUser(row.id)
+  }
+}
+
 const loadUsers = async () => {
+  // 系统管理员查询全量用户。
   const { data } = await api.get('/users/')
   users.value = asList<User>(data)
 }
 
 const loadCommunities = async () => {
+  // 用于角色为志愿者/社区管理员时的社区选择。
   const { data } = await api.get('/communities/')
   communities.value = asList<Community>(data)
 }
 
 onMounted(async () => {
+  // 页面初始化并行拉取用户与社区。
   await Promise.all([loadUsers(), loadCommunities()])
 })
 </script>

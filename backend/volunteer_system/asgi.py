@@ -1,10 +1,7 @@
 """
-ASGI config for volunteer_system project.
+volunteer_system 项目的 ASGI 配置。
 
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
+该模块对外暴露名为 ``application`` 的 ASGI 可调用对象。
 """
 
 import os

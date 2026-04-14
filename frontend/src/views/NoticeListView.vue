@@ -26,6 +26,7 @@ const notices = ref<Notice[]>([])
 const fmt = (value: string) => new Date(value).toLocaleString()
 
 const loadNotices = async () => {
+  // 拉取当前用户可见公告（全局 + 角色可见社区公告）。
   const { data } = await api.get('/notices/')
   notices.value = asList<Notice>(data)
 }

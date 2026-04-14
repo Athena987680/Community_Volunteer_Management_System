@@ -1,3 +1,12 @@
+﻿"""后端测试模块。
+
+当前保留为占位文件，后续可按功能拆分为：
+- 认证与权限测试
+- 活动/报名/工时流程测试
+- 统计接口测试
+"""
+
 from django.test import TestCase
 
-# Create your tests here.
+
+# 暂无测试用例，后续在此模块补充。

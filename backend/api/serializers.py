@@ -1,14 +1,40 @@
-﻿from django.core.exceptions import DisallowedHost
+﻿"""序列化器定义与输入校验规则。"""
+
+from decimal import Decimal, ROUND_HALF_UP
+
+from django.core.exceptions import DisallowedHost
 from django.db.models import Sum, DecimalField, Value
 from django.db.models.functions import Coalesce
 from rest_framework import serializers
 
-from .models import User, Community, ActivityType, Activity, Registration, Attendance, Notice, Evaluation, ActivityComment
+from .models import (
+    User,
+    Community,
+    CommunityChangeRequest,
+    ActivityType,
+    Activity,
+    Registration,
+    Attendance,
+    Notice,
+    Evaluation,
+    ActivityComment,
+    OperationLog,
+)
 
-DECIMAL_ZERO = Value(0, output_field=DecimalField(max_digits=12, decimal_places=2))
+DECIMAL_ZERO = Value(0, output_field=DecimalField(max_digits=12, decimal_places=1))
+HOUR_QUANT = Decimal("0.1")
+
+
+def format_hours(value):
+    """统一将工时值格式化为 1 位小数浮点数。"""
+    if value is None:
+        return None
+    decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
+    return float(decimal_value.quantize(HOUR_QUANT, rounding=ROUND_HALF_UP))
 
 
 class UserSerializer(serializers.ModelSerializer):
+    """用户信息展示序列化器。"""
     community_name = serializers.CharField(source="community.name", read_only=True)
     total_service_hours = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
@@ -37,13 +63,14 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "date_joined"]
 
     def get_total_service_hours(self, obj):
+        # 仅志愿者展示累计服务工时；管理角色返回空值。
         if obj.role != "volunteer":
             return None
         agg = Attendance.objects.filter(
             registration__volunteer=obj,
             status="confirmed",
         ).aggregate(total=Coalesce(Sum("approved_hours"), DECIMAL_ZERO))
-        return float(agg["total"]) if agg["total"] is not None else 0
+        return format_hours(agg["total"]) if agg["total"] is not None else 0
 
     def get_avatar(self, obj):
         if not obj.avatar:
@@ -58,6 +85,7 @@ class UserSerializer(serializers.ModelSerializer):
         return url
 
     def to_representation(self, instance):
+        # 按角色裁剪不适用字段，避免前端误展示。
         data = super().to_representation(instance)
         if instance.role == "system_admin":
             data["community"] = None
@@ -71,6 +99,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserRegisterSerializer(serializers.ModelSerializer):
+    """用户注册序列化器。"""
     password = serializers.CharField(write_only=True, min_length=6)
 
     class Meta:
@@ -83,6 +112,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
+        # 社区管理员注册后需系统管理员审核。
         role = validated_data.get("role", "volunteer")
         validated_data["approval_status"] = "pending" if role == "community_admin" else "approved"
         validated_data["profile_completed"] = False
@@ -101,6 +131,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
 
 class UserManageSerializer(serializers.ModelSerializer):
+    """系统管理员使用的用户管理序列化器。"""
     password = serializers.CharField(write_only=True, required=False, min_length=6)
 
     class Meta:
@@ -144,6 +175,7 @@ class UserManageSerializer(serializers.ModelSerializer):
         return instance
 
     def validate(self, attrs):
+        # 管理端统一做角色-字段一致性约束。
         role = attrs.get("role", getattr(self.instance, "role", None))
         community = attrs.get("community", getattr(self.instance, "community", None))
         if role in ["volunteer", "community_admin"] and not community:
@@ -163,6 +195,7 @@ class UserManageSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    """当前用户个人资料更新序列化器。"""
     class Meta:
         model = User
         fields = ["real_name", "gender", "phone", "age", "community", "skills", "avatar"]
@@ -174,12 +207,43 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class CommunitySerializer(serializers.ModelSerializer):
+    """社区序列化器。"""
     class Meta:
         model = Community
         fields = "__all__"
 
 
+class CommunityChangeRequestSerializer(serializers.ModelSerializer):
+    """社区变更申请序列化器。"""
+    applicant_name = serializers.CharField(source="applicant.real_name", read_only=True)
+    applicant_username = serializers.CharField(source="applicant.username", read_only=True)
+    from_community_name = serializers.CharField(source="from_community.name", read_only=True)
+    to_community_name = serializers.CharField(source="to_community.name", read_only=True)
+    reviewed_by_name = serializers.CharField(source="reviewed_by.real_name", read_only=True)
+
+    class Meta:
+        model = CommunityChangeRequest
+        fields = "__all__"
+        read_only_fields = [
+            "applicant",
+            "from_community",
+            "status",
+            "review_note",
+            "reviewed_by",
+            "applied_at",
+            "reviewed_at",
+        ]
+
+    def validate_reason(self, value):
+        # 统一去除首尾空白，空字符串转 None。
+        if value is None:
+            return None
+        text = value.strip()
+        return text or None
+
+
 class ActivityTypeSerializer(serializers.ModelSerializer):
+    """活动类型序列化器。"""
     class Meta:
         model = ActivityType
         fields = "__all__"
@@ -187,6 +251,7 @@ class ActivityTypeSerializer(serializers.ModelSerializer):
 
 
 class ActivitySerializer(serializers.ModelSerializer):
+    """活动序列化器，包含活动业务校验。"""
     community_name = serializers.CharField(source="community.name", read_only=True)
     created_by_name = serializers.CharField(source="created_by.real_name", read_only=True)
     reviewer_name = serializers.CharField(source="reviewer.real_name", read_only=True)
@@ -198,7 +263,7 @@ class ActivitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Activity
         fields = "__all__"
-        read_only_fields = ["created_by", "reviewer", "reviewed_at", "created_at", "updated_at"]
+        read_only_fields = ["status", "review_status", "created_by", "reviewer", "reviewed_at", "created_at", "updated_at"]
 
     def get_approved_count(self, obj):
         return obj.registrations.filter(status="approved").count()
@@ -211,6 +276,7 @@ class ActivitySerializer(serializers.ModelSerializer):
         return None
 
     def validate(self, attrs):
+        # 编辑场景下需兼容“部分字段更新”。
         start_time = attrs.get("start_time", getattr(self.instance, "start_time", None))
         end_time = attrs.get("end_time", getattr(self.instance, "end_time", None))
         deadline = attrs.get("deadline", getattr(self.instance, "deadline", None))
@@ -226,11 +292,13 @@ class ActivitySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("请选择活动类型")
 
         if activity_type.name == "其他":
+            # “其他”类型必须填写补充说明。
             other_type_text = (other_type or "").strip()
             if not other_type_text:
                 raise serializers.ValidationError("选择“其他”时必须填写类型补充")
             attrs["other_type"] = other_type_text
         else:
+            # 非“其他”类型不保留 other_type，避免脏数据。
             unchanged_existing_type = bool(self.instance and activity_type.id == getattr(self.instance.activity_type, "id", None))
             if not activity_type.is_active and not unchanged_existing_type:
                 raise serializers.ValidationError("活动类型必须从系统启用类型中选择")
@@ -239,6 +307,7 @@ class ActivitySerializer(serializers.ModelSerializer):
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
+    """报名记录序列化器。"""
     activity_title = serializers.CharField(source="activity.title", read_only=True)
     activity_status = serializers.CharField(source="activity.status", read_only=True)
     volunteer_name = serializers.CharField(source="volunteer.real_name", read_only=True)
@@ -253,6 +322,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
 
 class AttendanceSerializer(serializers.ModelSerializer):
+    """签到工时序列化器。"""
     volunteer = serializers.IntegerField(source="registration.volunteer.id", read_only=True)
     volunteer_name = serializers.CharField(source="registration.volunteer.real_name", read_only=True)
     activity = serializers.IntegerField(source="registration.activity.id", read_only=True)
@@ -271,8 +341,16 @@ class AttendanceSerializer(serializers.ModelSerializer):
             "reviewed_at",
         ]
 
+    def to_representation(self, instance):
+        # 前端统一使用格式化后的小时数字（1 位小数）。
+        data = super().to_representation(instance)
+        data["hours"] = format_hours(instance.hours)
+        data["approved_hours"] = format_hours(instance.approved_hours)
+        return data
+
 
 class NoticeSerializer(serializers.ModelSerializer):
+    """公告序列化器。"""
     community_name = serializers.CharField(source="community.name", read_only=True)
     created_by_name = serializers.CharField(source="created_by.real_name", read_only=True)
 
@@ -283,6 +361,7 @@ class NoticeSerializer(serializers.ModelSerializer):
 
 
 class EvaluationSerializer(serializers.ModelSerializer):
+    """活动评价序列化器。"""
     activity_title = serializers.CharField(source="activity.title", read_only=True)
     volunteer_name = serializers.CharField(source="volunteer.real_name", read_only=True)
 
@@ -292,12 +371,14 @@ class EvaluationSerializer(serializers.ModelSerializer):
         read_only_fields = ["volunteer", "created_at"]
 
     def validate_rating(self, value):
+        # 评分采用 1~5 的离散整数区间。
         if value < 1 or value > 5:
             raise serializers.ValidationError("评分范围为1-5")
         return value
 
 
 class ActivityCommentSerializer(serializers.ModelSerializer):
+    """活动评论序列化器。"""
     author_name = serializers.SerializerMethodField()
     author_username = serializers.CharField(source="author.username", read_only=True)
     author_role = serializers.CharField(source="author.role", read_only=True)
@@ -355,6 +436,7 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
         return user.role == "system_admin" or obj.author_id == user.id
 
     def validate(self, attrs):
+        # 更新场景下也要校验 parent 与 activity 的一致性。
         parent = attrs.get("parent", getattr(self.instance, "parent", None))
         activity = attrs.get("activity", getattr(self.instance, "activity", None))
         content = attrs.get("content")
@@ -370,11 +452,29 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
         return attrs
 
     def to_representation(self, instance):
+        # 软删除评论统一回显占位文案。
         data = super().to_representation(instance)
         if instance.is_deleted:
             data["content"] = "[该评论已删除]"
             data["can_delete"] = False
         return data
+
+
+class OperationLogSerializer(serializers.ModelSerializer):
+    """操作日志序列化器。"""
+    operator_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OperationLog
+        fields = "__all__"
+
+    def get_operator_name(self, obj):
+        if obj.operator:
+            return obj.operator.real_name or obj.operator.username
+        return obj.operator_display
+
+
+
 
 
 

@@ -37,6 +37,9 @@
           <el-menu-item v-if="userStore.isAdmin" index="/manage/activity-types">
             <span class="manage-item-text">活动类型管理</span>
           </el-menu-item>
+          <el-menu-item v-if="userStore.isAdmin" index="/manage/operation-logs">
+            <span class="manage-item-text">操作日志</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <el-menu-item index="/profile">
@@ -49,6 +52,9 @@
     <el-container>
       <el-header class="layout-header">
         <div class="header-left">
+          <el-button v-if="isMobile" class="mobile-menu-btn" circle plain @click="mobileMenuVisible = true">
+            <el-icon><Menu /></el-icon>
+          </el-button>
           <div class="user-role">{{ roleText }}</div>
           <div class="user-name">{{ userStore.user?.real_name || userStore.user?.username }}</div>
         </div>
@@ -59,6 +65,61 @@
       </el-main>
     </el-container>
   </el-container>
+
+  <el-drawer
+    v-model="mobileMenuVisible"
+    class="mobile-drawer"
+    direction="ltr"
+    size="230px"
+    :with-header="false"
+  >
+    <div class="brand">社区志愿服务系统</div>
+    <el-menu router :default-active="$route.path" class="menu" @select="handleMobileMenuSelect">
+      <el-menu-item v-if="!userStore.isVolunteer" index="/dashboard">
+        <el-icon><DataAnalysis /></el-icon>
+        <span>仪表盘</span>
+      </el-menu-item>
+      <el-menu-item index="/activities">
+        <el-icon><Calendar /></el-icon>
+        <span>活动列表</span>
+      </el-menu-item>
+      <el-menu-item v-if="userStore.isVolunteer" index="/my-registrations">
+        <el-icon><Document /></el-icon>
+        <span>我的报名</span>
+      </el-menu-item>
+      <el-menu-item index="/notices">
+        <el-icon><Bell /></el-icon>
+        <span>通知公告</span>
+      </el-menu-item>
+
+      <el-sub-menu
+        v-if="userStore.isCommunityAdmin || userStore.isAdmin"
+        index="/manage"
+        popper-class="manage-submenu-popper"
+      >
+        <template #title>
+          <el-icon><Setting /></el-icon>
+          <span>管理端</span>
+        </template>
+        <el-menu-item index="/manage/activities"><span class="manage-item-text">活动管理</span></el-menu-item>
+        <el-menu-item index="/manage/reviews"><span class="manage-item-text">审核管理</span></el-menu-item>
+        <el-menu-item index="/manage/notices"><span class="manage-item-text">公告管理</span></el-menu-item>
+        <el-menu-item v-if="userStore.isAdmin" index="/manage/users"><span class="manage-item-text">用户管理</span></el-menu-item>
+        <el-menu-item v-if="userStore.isAdmin" index="/manage/communities"><span class="manage-item-text">社区管理</span></el-menu-item>
+        <el-menu-item v-if="userStore.isAdmin" index="/manage/activity-types">
+          <span class="manage-item-text">活动类型管理</span>
+        </el-menu-item>
+        <el-menu-item v-if="userStore.isAdmin" index="/manage/operation-logs">
+          <span class="manage-item-text">操作日志</span>
+        </el-menu-item>
+      </el-sub-menu>
+
+      <el-menu-item index="/profile">
+        <el-icon><User /></el-icon>
+        <span>个人中心</span>
+      </el-menu-item>
+    </el-menu>
+  </el-drawer>
 
   <el-dialog
     v-model="profileDialogVisible"
@@ -85,9 +146,12 @@
         <el-input-number v-model="profileForm.age" :min="1" :max="120" />
       </el-form-item>
       <el-form-item v-if="requireCommunity" label="所属社区" required>
-        <el-select v-model="profileForm.community" clearable style="width: 100%">
+        <el-select v-model="profileForm.community" :disabled="!canEditProfileCommunity" clearable style="width: 100%">
           <el-option v-for="item in communities" :key="item.id" :label="item.name" :value="item.id" />
         </el-select>
+        <div v-if="!canEditProfileCommunity" class="meta-row" style="margin-top: 6px">
+          所属社区不可直接修改，如需变更请在个人中心提交社区变更申请。
+        </div>
       </el-form-item>
       <el-form-item v-if="allowSkills" label="技能特长">
         <el-input v-model="profileForm.skills" type="textarea" :rows="3" />
@@ -107,7 +171,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -116,9 +180,23 @@ import type { Community } from '@/types'
 
 const router = useRouter()
 const userStore = useUserStore()
+// 首次登录资料完善弹窗与保存状态。
 const profileDialogVisible = ref(false)
 const savingProfile = ref(false)
+// 注册/资料完善时选择社区的数据源。
 const communities = ref<Community[]>([])
+// 移动端侧边抽屉状态。
+const mobileMenuVisible = ref(false)
+const isMobile = ref(false)
+let mediaQuery: MediaQueryList | null = null
+
+const onMediaChange = (event: MediaQueryListEvent) => {
+  // 切回桌面宽度时自动关闭抽屉，避免状态残留。
+  isMobile.value = event.matches
+  if (!event.matches) {
+    mobileMenuVisible.value = false
+  }
+}
 
 const profileForm = ref({
   real_name: '',
@@ -131,6 +209,7 @@ const profileForm = ref({
 })
 
 const roleText = computed(() => {
+  // 头部角色文案映射。
   const role = userStore.user?.role
   const map: Record<string, string> = {
     volunteer: '志愿者端',
@@ -141,19 +220,37 @@ const roleText = computed(() => {
 })
 
 const requireCommunity = computed(() => {
+  // 志愿者和社区管理员必须绑定社区。
   return userStore.user?.role === 'volunteer' || userStore.user?.role === 'community_admin'
 })
 
+const canEditProfileCommunity = computed(() => {
+  // 志愿者仅在“尚未绑定社区”时可直接选择社区；后续改社区走申请流程。
+  if (userStore.user?.role === 'volunteer') {
+    return !userStore.user?.community
+  }
+  return false
+})
+
 const allowSkills = computed(() => {
+  // 技能特长仅对志愿者开放。
   return userStore.user?.role === 'volunteer'
 })
 
 const handleLogout = () => {
+  // 清理登录态并回到登录页。
   userStore.logout()
   router.push('/login')
 }
 
+const handleMobileMenuSelect = () => {
+  if (isMobile.value) {
+    mobileMenuVisible.value = false
+  }
+}
+
 const handleAvatarChange = (uploadFile: { raw?: File }) => {
+  // 本地先做头像格式与大小校验，减少无效请求。
   const file = uploadFile.raw
   if (!file) return
   if (!file.type.startsWith('image/')) {
@@ -170,11 +267,13 @@ const handleAvatarChange = (uploadFile: { raw?: File }) => {
 }
 
 const loadCommunities = async () => {
+  // 拉取社区列表用于注册和资料完善。
   const { data } = await api.get('/communities/')
   communities.value = asList<Community>(data)
 }
 
 const initProfileForm = () => {
+  // 用当前用户资料回填表单。
   const user = userStore.user
   if (!user) return
   profileForm.value.real_name = user.real_name || ''
@@ -187,6 +286,7 @@ const initProfileForm = () => {
 }
 
 const submitProfile = async () => {
+  // 提交资料前做前端必填校验。
   if (!profileForm.value.real_name || !profileForm.value.gender || !profileForm.value.phone || !profileForm.value.age) {
     ElMessage.warning('请先填写完整必填信息')
     return
@@ -219,10 +319,21 @@ const submitProfile = async () => {
 }
 
 onMounted(async () => {
+  // 页面初始化：监听断点、加载社区、回填资料、判断是否强提醒完善资料。
+  mediaQuery = window.matchMedia('(max-width: 900px)')
+  isMobile.value = mediaQuery.matches
+  mediaQuery.addEventListener('change', onMediaChange)
+
   await loadCommunities()
   initProfileForm()
   if (userStore.user && !userStore.user.profile_completed) {
     profileDialogVisible.value = true
+  }
+})
+
+onUnmounted(() => {
+  if (mediaQuery) {
+    mediaQuery.removeEventListener('change', onMediaChange)
   }
 })
 </script>
@@ -330,6 +441,10 @@ onMounted(async () => {
 }
 
 @media (max-width: 900px) {
+  .layout-aside {
+    display: none;
+  }
+
   .layout-header {
     padding: 0 12px;
   }
@@ -337,10 +452,80 @@ onMounted(async () => {
   .user-name {
     display: none;
   }
+
+  .layout-main {
+    padding: 12px;
+  }
+}
+
+.mobile-menu-btn {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
 }
 </style>
 
 <style>
+.mobile-drawer .el-drawer__body {
+  padding: 0;
+  background: #1f5c52;
+}
+
+.mobile-drawer .brand {
+  margin-bottom: 0;
+  color: #fff;
+}
+
+.mobile-drawer .menu {
+  border-right: none;
+  background: transparent;
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: rgba(255, 255, 255, 0.88);
+  --el-menu-active-color: #fff;
+  --el-menu-hover-bg-color: rgba(255, 255, 255, 0.12);
+}
+
+.mobile-drawer .menu > .el-menu-item,
+.mobile-drawer .menu > .el-sub-menu > .el-sub-menu__title {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
+.mobile-drawer .menu > .el-menu-item:hover,
+.mobile-drawer .menu > .el-sub-menu > .el-sub-menu__title:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.mobile-drawer .menu > .el-menu-item.is-active,
+.mobile-drawer .menu > .el-sub-menu.is-active > .el-sub-menu__title {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+}
+
+.mobile-drawer .menu .el-sub-menu .el-menu-item {
+  color: rgba(255, 255, 255, 0.84) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.mobile-drawer .menu .el-sub-menu .el-menu-item:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.mobile-drawer .menu .el-sub-menu .el-menu-item.is-active {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.mobile-drawer .menu .el-menu-item *,
+.mobile-drawer .menu .el-sub-menu__title *,
+.mobile-drawer .menu .el-sub-menu .el-menu-item * {
+  color: inherit !important;
+}
+
 .manage-submenu-popper {
   border: 1px solid #e3ebf5;
   border-radius: 8px;

@@ -35,33 +35,49 @@
             {{ attendanceOf(row.id)?.approved_hours ?? '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="260" fixed="right">
+        <el-table-column label="操作" :width="isMobile ? 88 : 260" :fixed="isMobile ? undefined : 'right'">
           <template #default="{ row }">
-            <el-button link type="primary" @click="goDetail(row.activity)">查看活动</el-button>
-            <el-button
-              v-if="row.status === 'pending'"
-              link
-              type="danger"
-              @click="cancelRegistration(row.id)"
-            >
-              取消报名
-            </el-button>
-            <el-button
-              v-if="canCheckIn(row.id, row.status)"
-              link
-              type="success"
-              @click="doCheckIn(attendanceOf(row.id)!.id)"
-            >
-              签到
-            </el-button>
-            <el-button
-              v-if="canCheckOut(row.id, row.status)"
-              link
-              type="warning"
-              @click="doCheckOut(attendanceOf(row.id)!.id)"
-            >
-              签退
-            </el-button>
+            <template v-if="!isMobile">
+              <el-button link type="primary" @click="goDetail(row.activity)">查看活动</el-button>
+              <el-button
+                v-if="row.status === 'pending'"
+                link
+                type="danger"
+                @click="cancelRegistration(row.id)"
+              >
+                取消报名
+              </el-button>
+              <el-button
+                v-if="canCheckIn(row.id, row.status)"
+                link
+                type="success"
+                @click="doCheckIn(attendanceOf(row.id)!.id)"
+              >
+                签到
+              </el-button>
+              <el-button
+                v-if="canCheckOut(row.id, row.status)"
+                link
+                type="warning"
+                @click="doCheckOut(attendanceOf(row.id)!.id)"
+              >
+                签退
+              </el-button>
+            </template>
+            <el-dropdown v-else trigger="click" @command="(command: string) => handleMobileCommand(row, command)">
+              <el-button link type="primary">
+                操作
+                <el-icon><MoreFilled /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="detail">查看活动</el-dropdown-item>
+                  <el-dropdown-item v-if="row.status === 'pending'" command="cancel">取消报名</el-dropdown-item>
+                  <el-dropdown-item v-if="canCheckIn(row.id, row.status)" command="checkin">签到</el-dropdown-item>
+                  <el-dropdown-item v-if="canCheckOut(row.id, row.status)" command="checkout">签退</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -75,14 +91,18 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api, { asList } from '@/utils/request'
 import type { Registration, Attendance } from '@/types'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const router = useRouter()
+const { isMobile } = useIsMobile()
+// 我的报名列表与对应签到记录。
 const registrations = ref<Registration[]>([])
 const attendances = ref<Attendance[]>([])
 
 const fmt = (value: string) => (value ? new Date(value).toLocaleString() : '-')
 
 const regText = (status: string) => {
+  // 报名状态文案映射。
   const map: Record<string, string> = {
     pending: '待审核',
     approved: '已通过',
@@ -93,6 +113,7 @@ const regText = (status: string) => {
 }
 
 const regType = (status: string) => {
+  // 报名状态标签颜色映射。
   const map: Record<string, any> = {
     pending: 'warning',
     approved: 'success',
@@ -103,6 +124,7 @@ const regType = (status: string) => {
 }
 
 const attText = (status: string) => {
+  // 工时审核状态文案映射。
   const map: Record<string, string> = {
     pending: '待审核',
     confirmed: '已确认',
@@ -112,6 +134,7 @@ const attText = (status: string) => {
 }
 
 const attType = (status: string) => {
+  // 工时审核状态标签颜色映射。
   const map: Record<string, any> = {
     pending: 'warning',
     confirmed: 'success',
@@ -121,28 +144,58 @@ const attType = (status: string) => {
 }
 
 const attendanceOf = (registrationId: number) => {
+  // 通过报名 ID 关联签到记录。
   return attendances.value.find((item) => item.registration === registrationId)
 }
 
 const canCheckIn = (registrationId: number, registrationStatus: string) => {
+  // 报名已通过且未签到时允许签到。
   const record = attendanceOf(registrationId)
   return !!record && registrationStatus === 'approved' && !record.check_in_time
 }
 
 const canCheckOut = (registrationId: number, registrationStatus: string) => {
+  // 已签到且未签退时允许签退。
   const record = attendanceOf(registrationId)
   return !!record && registrationStatus === 'approved' && !!record.check_in_time && !record.check_out_time
 }
 
 const goDetail = (id: number) => router.push(`/activities/${id}`)
 
+const handleMobileCommand = async (row: Registration, command: string) => {
+  // 移动端下拉菜单命令分发。
+  if (command === 'detail') {
+    goDetail(row.activity)
+    return
+  }
+  if (command === 'cancel') {
+    await cancelRegistration(row.id)
+    return
+  }
+  if (command === 'checkin') {
+    const attendance = attendanceOf(row.id)
+    if (attendance) {
+      await doCheckIn(attendance.id)
+    }
+    return
+  }
+  if (command === 'checkout') {
+    const attendance = attendanceOf(row.id)
+    if (attendance) {
+      await doCheckOut(attendance.id)
+    }
+  }
+}
+
 const loadData = async () => {
+  // 并行加载报名与签到数据，保持页面一致性。
   const [regResp, attResp] = await Promise.all([api.get('/registrations/'), api.get('/attendances/')])
   registrations.value = asList<Registration>(regResp.data)
   attendances.value = asList<Attendance>(attResp.data)
 }
 
 const cancelRegistration = async (id: number) => {
+  // 志愿者主动取消待审核报名。
   try {
     await api.post(`/registrations/${id}/cancel/`)
     ElMessage.success('报名已取消')
@@ -153,6 +206,7 @@ const cancelRegistration = async (id: number) => {
 }
 
 const doCheckIn = async (attendanceId: number) => {
+  // 执行签到动作。
   try {
     await api.post(`/attendances/${attendanceId}/check_in/`)
     ElMessage.success('签到成功')
@@ -163,6 +217,7 @@ const doCheckIn = async (attendanceId: number) => {
 }
 
 const doCheckOut = async (attendanceId: number) => {
+  // 执行签退动作，后续进入工时审核。
   try {
     await api.post(`/attendances/${attendanceId}/check_out/`)
     ElMessage.success('签退成功，等待工时审核')

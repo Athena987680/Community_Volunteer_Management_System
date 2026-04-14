@@ -2,6 +2,12 @@
 setlocal
 
 set "PORTS=8000,5173"
+set "BACKEND_TITLE=Volunteer Backend"
+set "FRONTEND_TITLE=Volunteer Frontend"
+
+echo [INFO] Closing run_all windows by title...
+taskkill /F /FI "IMAGENAME eq cmd.exe" /FI "WINDOWTITLE eq %BACKEND_TITLE%*" /T >nul 2>nul
+taskkill /F /FI "IMAGENAME eq cmd.exe" /FI "WINDOWTITLE eq %FRONTEND_TITLE%*" /T >nul 2>nul
 
 echo [INFO] Stopping services on ports %PORTS% ...
 

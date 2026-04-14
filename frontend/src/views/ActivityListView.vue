@@ -61,7 +61,7 @@
         <el-table-column label="报名截止" width="180">
           <template #default="{ row }">{{ formatTime(row.deadline) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="110" fixed="right">
+        <el-table-column label="操作" :width="isMobile ? 88 : 110" :fixed="isMobile ? undefined : 'right'">
           <template #default="{ row }">
             <el-button link type="primary" @click="goDetail(row.id)">查看</el-button>
           </template>
@@ -77,31 +77,37 @@ import { useRouter } from 'vue-router'
 import api, { asList } from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 import type { Activity } from '@/types'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const router = useRouter()
 const userStore = useUserStore()
+const { isMobile } = useIsMobile()
+// 活动原始列表与筛选条件。
 const activities = ref<Activity[]>([])
 const searchKeyword = ref('')
 const statusFilter = ref('')
 
+// 志愿者不展示“未开放”状态，管理员展示全生命周期状态。
 const statusOptions = computed(() => {
   if (userStore.isVolunteer) {
     return [
-      { label: '已通过', value: 'approved' },
+      { label: '报名中', value: 'recruiting' },
+      { label: '待开始', value: 'upcoming' },
       { label: '进行中', value: 'ongoing' },
       { label: '已结束', value: 'finished' },
     ]
   }
   return [
-    { label: '待审核', value: 'pending' },
-    { label: '已通过', value: 'approved' },
+    { label: '未开放', value: 'unopened' },
+    { label: '报名中', value: 'recruiting' },
+    { label: '待开始', value: 'upcoming' },
     { label: '进行中', value: 'ongoing' },
     { label: '已结束', value: 'finished' },
-    { label: '已拒绝', value: 'rejected' },
   ]
 })
 
 const filteredActivities = computed(() => {
+  // 前端本地组合筛选：关键字 + 状态。
   return activities.value.filter((item) => {
     const matchName = !searchKeyword.value || item.title.includes(searchKeyword.value)
     const matchStatus = !statusFilter.value || item.status === statusFilter.value
@@ -110,10 +116,11 @@ const filteredActivities = computed(() => {
 })
 
 const statusText = (status: string) => {
+  // 状态文案统一映射，避免模板内硬编码。
   const map: Record<string, string> = {
-    pending: '待审核',
-    approved: '已通过',
-    rejected: '已拒绝',
+    unopened: '未开放',
+    recruiting: '报名中',
+    upcoming: '待开始',
     ongoing: '进行中',
     finished: '已结束',
   }
@@ -121,10 +128,11 @@ const statusText = (status: string) => {
 }
 
 const statusType = (status: string) => {
+  // 状态标签颜色统一映射。
   const map: Record<string, '' | 'success' | 'warning' | 'danger' | 'info'> = {
-    pending: 'warning',
-    approved: 'success',
-    rejected: 'danger',
+    unopened: 'info',
+    recruiting: 'success',
+    upcoming: 'warning',
     ongoing: 'success',
     finished: 'info',
   }
@@ -136,9 +144,11 @@ const formatTime = (value?: string) => {
   return new Date(value).toLocaleString()
 }
 
+// 跳转到活动详情页。
 const goDetail = (id: number) => router.push(`/activities/${id}`)
 
 const loadActivities = async () => {
+  // 拉取当前角色可见活动（后端按角色做数据范围控制）。
   const { data } = await api.get('/activities/')
   activities.value = asList<Activity>(data)
 }

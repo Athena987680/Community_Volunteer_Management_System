@@ -51,6 +51,7 @@ import type { Community } from '@/types'
 
 const router = useRouter()
 const userStore = useUserStore()
+// 注册流程的表单状态与社区下拉数据。
 const loading = ref(false)
 const formRef = ref()
 const communities = ref<Community[]>([])
@@ -64,6 +65,7 @@ const form = ref({
 })
 
 const validateConfirmPassword = (_: any, value: string, callback: (error?: Error) => void) => {
+  // 二次密码校验，防止误输入。
   if (value !== form.value.password) {
     callback(new Error('两次输入密码不一致'))
     return
@@ -83,11 +85,13 @@ const rules = {
 }
 
 const loadCommunities = async () => {
+  // 注册时选择所属社区的数据源。
   const { data } = await api.get('/communities/')
   communities.value = asList<Community>(data)
 }
 
 const handleRegister = async () => {
+  // 表单校验通过后提交注册。
   await formRef.value.validate()
   loading.value = true
   try {

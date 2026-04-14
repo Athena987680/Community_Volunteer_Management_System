@@ -12,6 +12,7 @@ interface RegisterPayload {
 export const useUserStore = defineStore('user', {
   state: () => ({
     user: null as User | null,
+    // 仅持久化 token；用户详情在刷新后通过 /users/me/ 恢复。
     token: localStorage.getItem('access_token') || '',
   }),
 
@@ -25,6 +26,7 @@ export const useUserStore = defineStore('user', {
 
   actions: {
     async login(username: string, password: string) {
+      // 登录成功后保存 access/refresh token，并缓存用户信息。
       const { data } = await api.post('/users/login/', { username, password })
       this.token = data.access
       this.user = data.user
@@ -33,6 +35,7 @@ export const useUserStore = defineStore('user', {
     },
 
     async register(payload: RegisterPayload) {
+      // 注册接口使用 FormData，兼容后续扩展上传字段。
       const form = new FormData()
       Object.entries(payload).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '') {
@@ -43,11 +46,13 @@ export const useUserStore = defineStore('user', {
     },
 
     async fetchUserInfo() {
+      // 根据当前 token 拉取 /users/me/，用于刷新页面后的用户态恢复。
       const { data } = await api.get('/users/me/')
       this.user = data
     },
 
     async updateProfile(payload: Record<string, any>) {
+      // 资料更新包含头像文件，统一走 FormData。
       const form = new FormData()
       Object.entries(payload).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -59,6 +64,7 @@ export const useUserStore = defineStore('user', {
     },
 
     logout() {
+      // 统一清理所有本地登录态信息。
       this.user = null
       this.token = ''
       localStorage.removeItem('access_token')

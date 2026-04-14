@@ -29,6 +29,7 @@ import { useUserStore } from '@/stores/user'
 const router = useRouter()
 const userStore = useUserStore()
 
+// 登录表单与提交状态。
 const formRef = ref()
 const loading = ref(false)
 const form = ref({ username: '', password: '' })
@@ -39,6 +40,7 @@ const rules = {
 }
 
 const handleLogin = async () => {
+  // 先进行表单校验，再请求登录接口。
   await formRef.value.validate()
   loading.value = true
   try {

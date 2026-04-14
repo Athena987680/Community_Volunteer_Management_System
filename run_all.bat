@@ -4,6 +4,9 @@ setlocal enabledelayedexpansion
 set "ROOT_DIR=%~dp0"
 set "BACKEND_DIR=%ROOT_DIR%backend"
 set "FRONTEND_DIR=%ROOT_DIR%frontend"
+set "HOST=0.0.0.0"
+set "BACKEND_PORT=8000"
+set "FRONTEND_PORT=5173"
 
 if not exist "%BACKEND_DIR%\manage.py" (
   echo [ERROR] backend\manage.py not found.
@@ -40,6 +43,12 @@ if "%PY_CMD%"=="python" (
 
 echo [INFO] Using Python command: %PY_CMD%
 
+set "GET_IP_SCRIPT=%ROOT_DIR%scripts\get_local_ip.ps1"
+if exist "%GET_IP_SCRIPT%" (
+  for /f %%i in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%GET_IP_SCRIPT%"') do set "LOCAL_IP=%%i"
+)
+if not defined LOCAL_IP set "LOCAL_IP=127.0.0.1"
+
 echo [INFO] Running backend migrations...
 pushd "%BACKEND_DIR%"
 call %PY_CMD% manage.py migrate
@@ -64,14 +73,16 @@ if not exist "%FRONTEND_DIR%\node_modules" (
   popd
 )
 
-echo [INFO] Starting backend at http://127.0.0.1:8000 ...
-start "Volunteer Backend" cmd /k "cd /d ""%BACKEND_DIR%"" && %PY_CMD% manage.py runserver 127.0.0.1:8000"
+echo [INFO] Starting backend at http://%HOST%:%BACKEND_PORT% ...
+start "Volunteer Backend" cmd /k "cd /d ""%BACKEND_DIR%"" && %PY_CMD% manage.py runserver %HOST%:%BACKEND_PORT%"
 
-echo [INFO] Starting frontend at http://127.0.0.1:5173 ...
-start "Volunteer Frontend" cmd /k "cd /d ""%FRONTEND_DIR%"" && npm run dev -- --host 127.0.0.1 --port 5173"
+echo [INFO] Starting frontend at http://%HOST%:%FRONTEND_PORT% ...
+start "Volunteer Frontend" cmd /k "cd /d ""%FRONTEND_DIR%"" && npm run dev -- --host %HOST% --port %FRONTEND_PORT%"
 
 echo [DONE] Both services were launched in new windows.
 echo [TIP] If browser did not open automatically, visit:
-echo        http://127.0.0.1:5173
+echo        Local:    http://127.0.0.1:%FRONTEND_PORT%
+echo        LAN:      http://%LOCAL_IP%:%FRONTEND_PORT%
+echo [TIP] Open the LAN address on your phone (same Wi-Fi).
 
 pause

@@ -1,5 +1,7 @@
-﻿export type UserRole = 'volunteer' | 'community_admin' | 'system_admin'
+﻿// 用户角色枚举：用于路由守卫、页面显示和接口权限分支。
+export type UserRole = 'volunteer' | 'community_admin' | 'system_admin'
 
+// 用户资料与账号状态模型。
 export interface User {
   id: number
   username: string
@@ -20,6 +22,7 @@ export interface User {
   date_joined?: string
 }
 
+// 社区基础信息模型。
 export interface Community {
   id: number
   name: string
@@ -28,8 +31,34 @@ export interface Community {
   created_at?: string
 }
 
-export type ActivityStatus = 'pending' | 'approved' | 'rejected' | 'ongoing' | 'finished'
+// 社区变更审核状态。
+export type CommunityChangeStatus = 'pending' | 'approved' | 'rejected'
 
+// 社区变更申请模型。
+export interface CommunityChangeRequest {
+  id: number
+  applicant: number
+  applicant_name?: string
+  applicant_username?: string
+  from_community?: number | null
+  from_community_name?: string | null
+  to_community: number
+  to_community_name?: string
+  status: CommunityChangeStatus
+  reason?: string | null
+  review_note?: string | null
+  reviewed_by?: number | null
+  reviewed_by_name?: string
+  applied_at: string
+  reviewed_at?: string | null
+}
+
+// 活动生命周期状态（业务运行态）。
+export type ActivityStatus = 'unopened' | 'recruiting' | 'upcoming' | 'ongoing' | 'finished'
+// 活动审核状态（审批态）。
+export type ActivityReviewStatus = 'pending' | 'approved' | 'rejected'
+
+// 活动详情模型。
 export interface Activity {
   id: number
   title: string
@@ -46,6 +75,7 @@ export interface Activity {
   community_name?: string
   description: string
   deadline: string
+  review_status: ActivityReviewStatus
   status: ActivityStatus
   allow_external: boolean
   cover_image?: string
@@ -60,6 +90,7 @@ export interface Activity {
   updated_at?: string
 }
 
+// 活动类型字典模型。
 export interface ActivityType {
   id: number
   name: string
@@ -69,8 +100,10 @@ export interface ActivityType {
   created_at?: string
 }
 
+// 报名审核状态。
 export type RegistrationStatus = 'pending' | 'approved' | 'rejected' | 'canceled'
 
+// 报名记录模型。
 export interface Registration {
   id: number
   activity: number
@@ -88,6 +121,7 @@ export interface Registration {
   attendance_status?: 'pending' | 'confirmed' | 'rejected'
 }
 
+// 签到、签退与工时审核模型。
 export interface Attendance {
   id: number
   registration: number
@@ -108,6 +142,7 @@ export interface Attendance {
   reviewed_at?: string | null
 }
 
+// 公告模型。
 export interface Notice {
   id: number
   title: string
@@ -119,6 +154,7 @@ export interface Notice {
   created_by_name?: string
 }
 
+// 活动评价模型。
 export interface Evaluation {
   id: number
   activity: number
@@ -130,6 +166,7 @@ export interface Evaluation {
   created_at: string
 }
 
+// 活动评论模型（支持回复与软删除）。
 export interface ActivityComment {
   id: number
   activity: number
@@ -147,6 +184,27 @@ export interface ActivityComment {
   updated_at?: string
 }
 
+// 管理员操作审计日志模型。
+export interface OperationLog {
+  id: number
+  operator?: number | null
+  operator_display?: string | null
+  operator_name?: string | null
+  module: string
+  action: string
+  method: string
+  path: string
+  target_type?: string | null
+  target_id?: number | null
+  target_display?: string | null
+  status: 'success' | 'failed'
+  status_code: number
+  ip_address?: string | null
+  detail?: string | null
+  created_at: string
+}
+
+// 仪表盘概览统计模型。
 export interface OverviewStats {
   role: UserRole
   total_users?: number
@@ -160,6 +218,7 @@ export interface OverviewStats {
   attended_activities?: number
 }
 
+// 志愿者服务时长排行项模型。
 export interface ServiceRankingItem {
   volunteer_id: number
   volunteer_name: string
@@ -168,9 +227,11 @@ export interface ServiceRankingItem {
   activity_count: number
 }
 
+// 社区服务时长分布项模型。
 export interface CommunityDistributionItem {
   community_id: number
   community_name: string
   total_hours: number
   participant_count: number
 }
+

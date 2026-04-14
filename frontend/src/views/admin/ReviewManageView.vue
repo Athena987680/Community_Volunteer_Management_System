@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="view-page">
     <h2 class="page-title">审核管理</h2>
     <el-card>
@@ -26,14 +26,35 @@
               <template #default="{ row }">{{ fmt(row.date_joined) }}</template>
             </el-table-column>
             <el-table-column prop="approval_note" label="备注" min-width="200" />
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" :width="isMobile ? 88 : 180" :fixed="isMobile ? undefined : 'right'">
               <template #default="{ row }">
-                <el-button v-if="row.approval_status === 'pending'" link type="success" @click="approveCommunityAdmin(row.id)">
-                  通过
-                </el-button>
-                <el-button v-if="row.approval_status === 'pending'" link type="danger" @click="rejectCommunityAdmin(row.id)">
-                  拒绝
-                </el-button>
+                <template v-if="!isMobile">
+                  <el-button v-if="row.approval_status === 'pending'" link type="success" @click="approveCommunityAdmin(row.id)">
+                    通过
+                  </el-button>
+                  <el-button v-if="row.approval_status === 'pending'" link type="danger" @click="rejectCommunityAdmin(row.id)">
+                    拒绝
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-dropdown
+                    v-if="row.approval_status === 'pending'"
+                    trigger="click"
+                    @command="(command: string) => handleAdminAccountCommand(row, command)"
+                  >
+                    <el-button link type="primary">
+                      操作
+                      <el-icon><MoreFilled /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="approve">通过</el-dropdown-item>
+                        <el-dropdown-item command="reject">拒绝</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <span v-else>-</span>
+                </template>
               </template>
             </el-table-column>
           </el-table>
@@ -58,7 +79,12 @@
             <el-table-column label="发布时间" width="180">
               <template #default="{ row }">{{ fmt(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="状态" width="110">
+            <el-table-column label="审核状态" width="110">
+              <template #default="{ row }">
+                <el-tag :type="activityReviewStatusType(row.review_status)">{{ activityReviewStatusText(row.review_status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="活动状态" width="110">
               <template #default="{ row }">
                 <el-tag :type="activityStatusType(row.status)">{{ activityStatusText(row.status) }}</el-tag>
               </template>
@@ -67,14 +93,93 @@
             <el-table-column label="审核时间" width="180">
               <template #default="{ row }">{{ fmt(row.reviewed_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" :width="isMobile ? 88 : 180" :fixed="isMobile ? undefined : 'right'">
               <template #default="{ row }">
-                <el-button v-if="row.status === 'pending'" link type="success" @click="reviewActivity(row.id, 'approved')">
-                  通过
-                </el-button>
-                <el-button v-if="row.status === 'pending'" link type="danger" @click="reviewActivity(row.id, 'rejected')">
-                  拒绝
-                </el-button>
+                <template v-if="!isMobile">
+                  <el-button v-if="row.review_status === 'pending'" link type="success" @click="reviewActivity(row.id, 'approved')">
+                    通过
+                  </el-button>
+                  <el-button v-if="row.review_status === 'pending'" link type="danger" @click="reviewActivity(row.id, 'rejected')">
+                    拒绝
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-dropdown v-if="row.review_status === 'pending'" trigger="click" @command="(command: string) => handleActivityCommand(row, command)">
+                    <el-button link type="primary">
+                      操作
+                      <el-icon><MoreFilled /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="approved">通过</el-dropdown-item>
+                        <el-dropdown-item command="rejected">拒绝</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <span v-else>-</span>
+                </template>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
+        <el-tab-pane v-if="userStore.isAdmin" name="community-change">
+          <template #label>社区变更审核</template>
+          <div class="card-header" style="margin-bottom: 12px">
+            <el-radio-group v-model="communityChangeFilter" size="small">
+              <el-radio-button label="pending">待审核</el-radio-button>
+              <el-radio-button label="reviewed">已审核</el-radio-button>
+              <el-radio-button label="all">全部</el-radio-button>
+            </el-radio-group>
+          </div>
+          <el-table :data="filteredCommunityChanges" border>
+            <el-table-column prop="applicant_name" label="志愿者" width="120">
+              <template #default="{ row }">{{ row.applicant_name || row.applicant_username || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="from_community_name" label="原社区" width="140" />
+            <el-table-column prop="to_community_name" label="目标社区" width="140" />
+            <el-table-column prop="reason" label="申请原因" min-width="180" />
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag :type="communityChangeStatusType(row.status)">{{ communityChangeStatusText(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="申请时间" width="180">
+              <template #default="{ row }">{{ fmt(row.applied_at) }}</template>
+            </el-table-column>
+            <el-table-column prop="review_note" label="审核备注" min-width="180" />
+            <el-table-column label="审核时间" width="180">
+              <template #default="{ row }">{{ fmt(row.reviewed_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" :width="isMobile ? 88 : 180" :fixed="isMobile ? undefined : 'right'">
+              <template #default="{ row }">
+                <template v-if="!isMobile">
+                  <el-button v-if="row.status === 'pending'" link type="success" @click="reviewCommunityChange(row.id, 'approved')">
+                    通过
+                  </el-button>
+                  <el-button v-if="row.status === 'pending'" link type="danger" @click="reviewCommunityChange(row.id, 'rejected')">
+                    拒绝
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-dropdown
+                    v-if="row.status === 'pending'"
+                    trigger="click"
+                    @command="(command: string) => handleCommunityChangeCommand(row, command)"
+                  >
+                    <el-button link type="primary">
+                      操作
+                      <el-icon><MoreFilled /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="approved">通过</el-dropdown-item>
+                        <el-dropdown-item command="rejected">拒绝</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <span v-else>-</span>
+                </template>
               </template>
             </el-table-column>
           </el-table>
@@ -106,14 +211,35 @@
               </template>
             </el-table-column>
             <el-table-column prop="review_note" label="审核备注" min-width="180" />
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" :width="isMobile ? 88 : 180" :fixed="isMobile ? undefined : 'right'">
               <template #default="{ row }">
-                <el-button v-if="row.status === 'pending'" link type="success" @click="reviewRegistration(row.id, 'approve')">
-                  通过
-                </el-button>
-                <el-button v-if="row.status === 'pending'" link type="danger" @click="reviewRegistration(row.id, 'reject')">
-                  拒绝
-                </el-button>
+                <template v-if="!isMobile">
+                  <el-button v-if="row.status === 'pending'" link type="success" @click="reviewRegistration(row.id, 'approve')">
+                    通过
+                  </el-button>
+                  <el-button v-if="row.status === 'pending'" link type="danger" @click="reviewRegistration(row.id, 'reject')">
+                    拒绝
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-dropdown
+                    v-if="row.status === 'pending'"
+                    trigger="click"
+                    @command="(command: string) => handleRegistrationCommand(row, command)"
+                  >
+                    <el-button link type="primary">
+                      操作
+                      <el-icon><MoreFilled /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="approve">通过</el-dropdown-item>
+                        <el-dropdown-item command="reject">拒绝</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <span v-else>-</span>
+                </template>
               </template>
             </el-table-column>
           </el-table>
@@ -146,24 +272,45 @@
               </template>
             </el-table-column>
             <el-table-column prop="review_note" label="审核备注" min-width="180" />
-            <el-table-column label="操作" width="210" fixed="right">
+            <el-table-column label="操作" :width="isMobile ? 88 : 210" :fixed="isMobile ? undefined : 'right'">
               <template #default="{ row }">
-                <el-button
-                  v-if="row.status === 'pending' && row.check_out_time"
-                  link
-                  type="success"
-                  @click="confirmHours(row.id, row.hours || 0)"
-                >
-                  确认工时
-                </el-button>
-                <el-button
-                  v-if="row.status === 'pending' && row.check_out_time"
-                  link
-                  type="danger"
-                  @click="rejectHours(row.id)"
-                >
-                  驳回
-                </el-button>
+                <template v-if="!isMobile">
+                  <el-button
+                    v-if="row.status === 'pending' && row.check_out_time"
+                    link
+                    type="success"
+                    @click="confirmHours(row.id, row.hours || 0)"
+                  >
+                    确认工时
+                  </el-button>
+                  <el-button
+                    v-if="row.status === 'pending' && row.check_out_time"
+                    link
+                    type="danger"
+                    @click="rejectHours(row.id)"
+                  >
+                    驳回
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-dropdown
+                    v-if="row.status === 'pending' && row.check_out_time"
+                    trigger="click"
+                    @command="(command: string) => handleAttendanceCommand(row, command)"
+                  >
+                    <el-button link type="primary">
+                      操作
+                      <el-icon><MoreFilled /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="confirm">确认工时</el-dropdown-item>
+                        <el-dropdown-item command="reject">驳回</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <span v-else>-</span>
+                </template>
               </template>
             </el-table-column>
           </el-table>
@@ -207,15 +354,19 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { asList } from '@/utils/request'
 import { useUserStore } from '@/stores/user'
-import type { Activity, Attendance, Registration, User } from '@/types'
+import type { Activity, Attendance, CommunityChangeRequest, Registration, User } from '@/types'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const userStore = useUserStore()
-const activeTab = ref<'admin-account' | 'activity' | 'registration' | 'attendance'>(
+const { isMobile } = useIsMobile()
+// 不同角色进入页面的默认签：系统管理员优先看账号审核，社区管理员看报名审核。
+const activeTab = ref<'admin-account' | 'activity' | 'community-change' | 'registration' | 'attendance'>(
   userStore.isAdmin ? 'admin-account' : 'registration',
 )
 
 const users = ref<User[]>([])
 const activities = ref<Activity[]>([])
+const communityChanges = ref<CommunityChangeRequest[]>([])
 const registrations = ref<Registration[]>([])
 const attendances = ref<Attendance[]>([])
 const volunteerProfile = ref<User | null>(null)
@@ -223,9 +374,11 @@ const profileVisible = ref(false)
 const profileLoading = ref(false)
 const adminAccountFilter = ref<'pending' | 'reviewed' | 'all'>('pending')
 const activityFilter = ref<'pending' | 'reviewed' | 'all'>('pending')
+const communityChangeFilter = ref<'pending' | 'reviewed' | 'all'>('pending')
 const registrationFilter = ref<'pending' | 'reviewed' | 'all'>('pending')
 const attendanceFilter = ref<'pending' | 'reviewed' | 'all'>('pending')
 
+// 各标签的过滤结果（待审核/已审核/全部）。
 const filteredCommunityAdmins = computed(() => {
   const list = users.value.filter(item => item.role === 'community_admin')
   if (adminAccountFilter.value === 'pending') {
@@ -249,12 +402,22 @@ const filteredRegistrations = computed(() => {
 
 const filteredActivities = computed(() => {
   if (activityFilter.value === 'pending') {
-    return activities.value.filter(item => item.status === 'pending')
+    return activities.value.filter(item => item.review_status === 'pending')
   }
   if (activityFilter.value === 'reviewed') {
-    return activities.value.filter(item => item.status === 'approved' || item.status === 'rejected')
+    return activities.value.filter(item => item.review_status === 'approved' || item.review_status === 'rejected')
   }
   return activities.value
+})
+
+const filteredCommunityChanges = computed(() => {
+  if (communityChangeFilter.value === 'pending') {
+    return communityChanges.value.filter(item => item.status === 'pending')
+  }
+  if (communityChangeFilter.value === 'reviewed') {
+    return communityChanges.value.filter(item => item.status === 'approved' || item.status === 'rejected')
+  }
+  return communityChanges.value
 })
 
 const filteredAttendances = computed(() => {
@@ -299,9 +462,9 @@ const registrationStatusText = (status: string) => {
 
 const activityStatusText = (status: string) => {
   const map: Record<string, string> = {
-    pending: '待审核',
-    approved: '已通过',
-    rejected: '已拒绝',
+    unopened: '未开放',
+    recruiting: '报名中',
+    upcoming: '待开始',
     ongoing: '进行中',
     finished: '已结束',
   }
@@ -310,11 +473,29 @@ const activityStatusText = (status: string) => {
 
 const activityStatusType = (status: string) => {
   const map: Record<string, 'warning' | 'success' | 'danger' | 'info'> = {
+    unopened: 'info',
+    recruiting: 'success',
+    upcoming: 'warning',
+    ongoing: 'success',
+    finished: 'info',
+  }
+  return map[status] || 'info'
+}
+
+const activityReviewStatusText = (status: string) => {
+  const map: Record<string, string> = {
+    pending: '待审核',
+    approved: '已通过',
+    rejected: '已拒绝',
+  }
+  return map[status] || status
+}
+
+const activityReviewStatusType = (status: string) => {
+  const map: Record<string, 'warning' | 'success' | 'danger' | 'info'> = {
     pending: 'warning',
     approved: 'success',
     rejected: 'danger',
-    ongoing: 'success',
-    finished: 'info',
   }
   return map[status] || 'info'
 }
@@ -325,6 +506,24 @@ const registrationStatusType = (status: string) => {
     approved: 'success',
     rejected: 'danger',
     canceled: 'info',
+  }
+  return map[status] || 'info'
+}
+
+const communityChangeStatusText = (status: string) => {
+  const map: Record<string, string> = {
+    pending: '待审核',
+    approved: '已通过',
+    rejected: '已拒绝',
+  }
+  return map[status] || status
+}
+
+const communityChangeStatusType = (status: string) => {
+  const map: Record<string, 'warning' | 'success' | 'danger' | 'info'> = {
+    pending: 'warning',
+    approved: 'success',
+    rejected: 'danger',
   }
   return map[status] || 'info'
 }
@@ -347,6 +546,7 @@ const attendanceStatusType = (status: string) => {
   return map[status] || 'info'
 }
 
+// 以下 load* 方法对应各审核数据源。
 const loadUsers = async () => {
   if (!userStore.isAdmin) return
   const { data } = await api.get('/users/')
@@ -359,6 +559,12 @@ const loadActivities = async () => {
   activities.value = asList<Activity>(data)
 }
 
+const loadCommunityChanges = async () => {
+  if (!userStore.isAdmin) return
+  const { data } = await api.get('/community-change-requests/')
+  communityChanges.value = asList<CommunityChangeRequest>(data)
+}
+
 const loadRegistrations = async () => {
   const { data } = await api.get('/registrations/')
   registrations.value = asList<Registration>(data)
@@ -369,8 +575,19 @@ const loadAttendances = async () => {
   attendances.value = asList<Attendance>(data)
 }
 
+// 进入页面后并行加载全部审核数据。
 const loadAll = async () => {
-  await Promise.all([loadUsers(), loadActivities(), loadRegistrations(), loadAttendances()])
+  await Promise.all([loadUsers(), loadActivities(), loadCommunityChanges(), loadRegistrations(), loadAttendances()])
+}
+
+const handleAdminAccountCommand = async (row: User, command: string) => {
+  if (command === 'approve') {
+    await approveCommunityAdmin(row.id)
+    return
+  }
+  if (command === 'reject') {
+    await rejectCommunityAdmin(row.id)
+  }
 }
 
 const approveCommunityAdmin = async (id: number) => {
@@ -405,6 +622,7 @@ const rejectCommunityAdmin = async (id: number) => {
   }
 }
 
+// 报名审核：统一通过 action 参数复用通过/拒绝流程。
 const reviewRegistration = async (id: number, action: 'approve' | 'reject') => {
   let note = ''
   try {
@@ -427,6 +645,16 @@ const reviewRegistration = async (id: number, action: 'approve' | 'reject') => {
   }
 }
 
+const handleRegistrationCommand = async (row: Registration, command: string) => {
+  if (command === 'approve') {
+    await reviewRegistration(row.id, 'approve')
+    return
+  }
+  if (command === 'reject') {
+    await reviewRegistration(row.id, 'reject')
+  }
+}
+
 const openVolunteerProfile = async (registration: Registration) => {
   profileVisible.value = true
   profileLoading.value = true
@@ -442,6 +670,7 @@ const openVolunteerProfile = async (registration: Registration) => {
   }
 }
 
+// 活动审核：系统管理员审批后决定是否进入生命周期流转。
 const reviewActivity = async (id: number, decision: 'approved' | 'rejected') => {
   let note = ''
   try {
@@ -464,6 +693,46 @@ const reviewActivity = async (id: number, decision: 'approved' | 'rejected') => 
   }
 }
 
+const handleActivityCommand = async (row: Activity, command: string) => {
+  if (command === 'approved' || command === 'rejected') {
+    await reviewActivity(row.id, command)
+  }
+}
+
+// 社区变更审核：通过后后端会同步更新志愿者所属社区。
+const reviewCommunityChange = async (id: number, decision: 'approved' | 'rejected') => {
+  let note = ''
+  try {
+    const result = await ElMessageBox.prompt(
+      '请输入审核备注（可选）',
+      decision === 'approved' ? '通过社区变更' : '拒绝社区变更',
+      {
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        inputPlaceholder: '审核备注',
+      },
+    )
+    note = result.value || ''
+  } catch {
+    return
+  }
+
+  try {
+    await api.post(`/community-change-requests/${id}/review/`, { decision, review_note: note })
+    ElMessage.success('审核成功')
+    await Promise.all([loadCommunityChanges(), loadUsers()])
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || '操作失败')
+  }
+}
+
+const handleCommunityChangeCommand = async (row: CommunityChangeRequest, command: string) => {
+  if (command === 'approved' || command === 'rejected') {
+    await reviewCommunityChange(row.id, command)
+  }
+}
+
+// 工时审核通过：支持管理员调整最终确认工时。
 const confirmHours = async (id: number, defaultHours: number) => {
   let approvedHours = String(defaultHours)
   let note = ''
@@ -499,6 +768,7 @@ const confirmHours = async (id: number, defaultHours: number) => {
   }
 }
 
+// 工时审核驳回：将状态置为 rejected。
 const rejectHours = async (id: number) => {
   let note = ''
   try {
@@ -524,5 +794,16 @@ const rejectHours = async (id: number) => {
   }
 }
 
+const handleAttendanceCommand = async (row: Attendance, command: string) => {
+  if (command === 'confirm') {
+    await confirmHours(row.id, row.hours || 0)
+    return
+  }
+  if (command === 'reject') {
+    await rejectHours(row.id)
+  }
+}
+
 onMounted(loadAll)
 </script>
+

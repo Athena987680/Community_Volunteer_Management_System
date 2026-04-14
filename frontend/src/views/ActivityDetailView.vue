@@ -41,7 +41,7 @@
       <div class="action-row">
         <template v-if="userStore.isVolunteer">
           <el-button
-            v-if="!registration && activity.status === 'approved'"
+            v-if="!registration && activity.status === 'recruiting'"
             type="primary"
             :loading="submitting"
             @click="registerActivity"
@@ -54,8 +54,8 @@
           <span v-else class="meta-row">当前活动状态不可报名</span>
         </template>
 
-        <template v-if="(userStore.isAdmin || userStore.isCommunityAdmin) && ['approved', 'ongoing'].includes(activity.status)">
-          <el-button v-if="activity.status === 'approved'" type="success" plain @click="updateProgress('start')">开始活动</el-button>
+        <template v-if="(userStore.isAdmin || userStore.isCommunityAdmin) && activity.review_status === 'approved'">
+          <el-button v-if="['recruiting', 'upcoming'].includes(activity.status)" type="success" plain @click="updateProgress('start')">开始活动</el-button>
           <el-button v-if="activity.status === 'ongoing'" type="warning" plain @click="updateProgress('finish')">结束活动</el-button>
         </template>
       </div>
@@ -131,6 +131,7 @@ import type { Activity, ActivityComment, Registration, UserRole } from '@/types'
 const route = useRoute()
 const userStore = useUserStore()
 
+// 页面核心状态：活动详情、报名状态与评论区。
 const activity = ref<Activity | null>(null)
 const registration = ref<Registration | null>(null)
 const submitting = ref(false)
@@ -141,6 +142,7 @@ const commentSubmitting = ref(false)
 const replyParentId = ref<number | null>(null)
 const replyTargetName = ref('')
 
+// 评论仅做一层回复展示：父评论缩进 0，子评论缩进 1。
 const commentsWithDepth = computed(() => {
   return [...comments.value]
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
@@ -153,9 +155,9 @@ const commentsWithDepth = computed(() => {
 
 const statusText = (status: string) => {
   const map: Record<string, string> = {
-    pending: '待审核',
-    approved: '已通过',
-    rejected: '已拒绝',
+    unopened: '未开放',
+    recruiting: '报名中',
+    upcoming: '待开始',
     ongoing: '进行中',
     finished: '已结束',
   }
@@ -164,9 +166,9 @@ const statusText = (status: string) => {
 
 const statusType = (status: string) => {
   const map: Record<string, any> = {
-    pending: 'warning',
-    approved: 'success',
-    rejected: 'danger',
+    unopened: 'info',
+    recruiting: 'success',
+    upcoming: 'warning',
     ongoing: 'success',
     finished: 'info',
   }
@@ -205,6 +207,7 @@ const regStatusType = (status: string) => {
 
 const fmt = (value?: string) => (value ? new Date(value).toLocaleString() : '-')
 
+// 拉取活动详情，并在志愿者视角补拉“我的报名状态”。
 const loadDetail = async () => {
   const id = route.params.id
   const { data } = await api.get(`/activities/${id}/`)
@@ -219,6 +222,7 @@ const loadDetail = async () => {
   }
 }
 
+// 单独拉评论，便于发布/删除后局部刷新。
 const loadComments = async () => {
   if (!activity.value) return
   commentsLoading.value = true
@@ -230,6 +234,7 @@ const loadComments = async () => {
   }
 }
 
+// 志愿者报名入口。
 const registerActivity = async () => {
   if (!activity.value) return
   submitting.value = true
@@ -254,6 +259,7 @@ const cancelReply = () => {
   replyTargetName.value = ''
 }
 
+// 提交评论（支持 parent 字段实现回复）。
 const submitComment = async () => {
   if (!activity.value) return
   if (!commentText.value.trim()) {
@@ -278,6 +284,7 @@ const submitComment = async () => {
   }
 }
 
+// 软删除评论，删除后刷新评论列表。
 const deleteComment = async (item: ActivityComment) => {
   await ElMessageBox.confirm('确认删除该评论吗？', '提示', { type: 'warning' })
   try {
@@ -289,6 +296,7 @@ const deleteComment = async (item: ActivityComment) => {
   }
 }
 
+// 管理端可手动开始/结束活动。
 const updateProgress = async (action: 'start' | 'finish') => {
   if (!activity.value) return
   try {
@@ -438,4 +446,5 @@ onMounted(loadDetail)
   color: #8d9cae;
 }
 </style>
+
 

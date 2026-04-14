@@ -20,10 +20,24 @@
         <el-table-column label="创建时间" width="180">
           <template #default="{ row }">{{ fmt(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" :width="isMobile ? 88 : 180" :fixed="isMobile ? undefined : 'right'">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="removeCommunity(row.id)">删除</el-button>
+            <template v-if="!isMobile">
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" @click="removeCommunity(row.id)">删除</el-button>
+            </template>
+            <el-dropdown v-else trigger="click" @command="(command: string) => handleMobileCommand(row, command)">
+              <el-button link type="primary">
+                操作
+                <el-icon><MoreFilled /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item command="delete">删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -57,7 +71,10 @@ import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { asList } from '@/utils/request'
 import type { Community } from '@/types'
+import { useIsMobile } from '@/composables/useIsMobile'
 
+const { isMobile } = useIsMobile()
+// 社区列表与弹窗状态。
 const communities = ref<Community[]>([])
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
@@ -72,6 +89,7 @@ const form = ref({
 const fmt = (value?: string) => (value ? new Date(value).toLocaleString() : '-')
 
 const handleCoverChange = (uploadFile: { raw?: File }) => {
+  // 社区封面上传前格式校验。
   const file = uploadFile.raw
   if (!file) return
   if (!file.type.startsWith('image/')) {
@@ -83,6 +101,7 @@ const handleCoverChange = (uploadFile: { raw?: File }) => {
 }
 
 const resetForm = () => {
+  // 重置为新增社区表单默认值。
   form.value = { name: '', description: '', cover_image: undefined }
   editingId.value = null
 }
@@ -93,6 +112,7 @@ const openCreate = () => {
 }
 
 const openEdit = (row: Community) => {
+  // 编辑时按当前社区数据回填。
   editingId.value = row.id
   form.value.name = row.name
   form.value.description = row.description || ''
@@ -101,6 +121,7 @@ const openEdit = (row: Community) => {
 }
 
 const buildPayload = () => {
+  // 使用 FormData 兼容图片文件。
   const payload = new FormData()
   payload.append('name', form.value.name)
   payload.append('description', form.value.description)
@@ -111,6 +132,7 @@ const buildPayload = () => {
 }
 
 const submit = async () => {
+  // 根据 editingId 区分新增与编辑提交。
   saving.value = true
   try {
     const payload = buildPayload()
@@ -131,6 +153,7 @@ const submit = async () => {
 }
 
 const removeCommunity = async (id: number) => {
+  // 删除前提示数据影响范围。
   await ElMessageBox.confirm('确认删除该社区吗？删除后相关数据会受影响。', '提示', { type: 'warning' })
   try {
     await api.delete(`/communities/${id}/`)
@@ -141,7 +164,19 @@ const removeCommunity = async (id: number) => {
   }
 }
 
+const handleMobileCommand = async (row: Community, command: string) => {
+  // 移动端操作菜单命令分发。
+  if (command === 'edit') {
+    openEdit(row)
+    return
+  }
+  if (command === 'delete') {
+    await removeCommunity(row.id)
+  }
+}
+
 const loadCommunities = async () => {
+  // 加载全量社区数据。
   const { data } = await api.get('/communities/')
   communities.value = asList<Community>(data)
 }

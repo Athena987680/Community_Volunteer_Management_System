@@ -23,12 +23,54 @@
             <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="330" fixed="right">
+        <el-table-column label="审核" width="110">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>
-            <el-button link type="danger" @click="removeActivity(row.id)">删除</el-button>
-            <el-button v-if="row.status === 'approved'" link type="success" @click="progressActivity(row.id, 'start')">开始</el-button>
-            <el-button v-if="row.status === 'ongoing'" link type="warning" @click="progressActivity(row.id, 'finish')">结束</el-button>
+            <el-tag :type="reviewStatusType(row.review_status)">{{ reviewStatusText(row.review_status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" :min-width="isMobile ? 96 : 330" :fixed="isMobile ? undefined : 'right'">
+          <template #default="{ row }">
+            <template v-if="!isMobile">
+              <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>
+              <el-button link type="danger" @click="removeActivity(row.id)">删除</el-button>
+              <el-button
+                v-if="row.review_status === 'approved' && ['recruiting', 'upcoming'].includes(row.status)"
+                link
+                type="success"
+                @click="progressActivity(row.id, 'start')"
+              >
+                开始
+              </el-button>
+              <el-button
+                v-if="row.review_status === 'approved' && row.status === 'ongoing'"
+                link
+                type="warning"
+                @click="progressActivity(row.id, 'finish')"
+              >
+                结束
+              </el-button>
+            </template>
+            <el-dropdown v-else trigger="click" @command="(command: string) => handleMobileCommand(row, command)">
+              <el-button link type="primary">
+                操作
+                <el-icon><MoreFilled /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item command="delete">删除</el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="row.review_status === 'approved' && ['recruiting', 'upcoming'].includes(row.status)"
+                    command="start"
+                  >
+                    开始
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="row.review_status === 'approved' && row.status === 'ongoing'" command="finish">
+                    结束
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -94,11 +136,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { asList } from '@/utils/request'
 import { useUserStore } from '@/stores/user'
 import type { Activity, ActivityType, Community } from '@/types'
+import { useIsMobile } from '@/composables/useIsMobile'
 
 const userStore = useUserStore()
+const { isMobile } = useIsMobile()
+// 活动列表与下拉字典数据源。
 const activities = ref<Activity[]>([])
 const communities = ref<Community[]>([])
 const activityTypes = ref<ActivityType[]>([])
+// 新增/编辑弹窗状态。
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const saving = ref(false)
@@ -118,6 +164,7 @@ const form = ref({
   cover_image: undefined as File | undefined,
 })
 const selectedTypeName = computed(() => {
+  // 根据已选类型 ID 回推名称。
   const found = activityTypes.value.find(item => item.id === form.value.activity_type)
   return found?.name || ''
 })
@@ -125,9 +172,9 @@ const useOtherType = computed(() => selectedTypeName.value === '其他')
 
 const statusText = (status: string) => {
   const map: Record<string, string> = {
-    pending: '待审核',
-    approved: '已通过',
-    rejected: '已拒绝',
+    unopened: '未开放',
+    recruiting: '报名中',
+    upcoming: '待开始',
     ongoing: '进行中',
     finished: '已结束',
   }
@@ -136,11 +183,29 @@ const statusText = (status: string) => {
 
 const statusType = (status: string) => {
   const map: Record<string, any> = {
+    unopened: 'info',
+    recruiting: 'success',
+    upcoming: 'warning',
+    ongoing: 'success',
+    finished: 'info',
+  }
+  return map[status] || 'info'
+}
+
+const reviewStatusText = (status: string) => {
+  const map: Record<string, string> = {
+    pending: '待审核',
+    approved: '已通过',
+    rejected: '已拒绝',
+  }
+  return map[status] || status
+}
+
+const reviewStatusType = (status: string) => {
+  const map: Record<string, any> = {
     pending: 'warning',
     approved: 'success',
     rejected: 'danger',
-    ongoing: 'success',
-    finished: 'info',
   }
   return map[status] || 'info'
 }
@@ -148,6 +213,7 @@ const statusType = (status: string) => {
 const fmt = (value?: string) => (value ? new Date(value).toLocaleString() : '-')
 
 const handleCoverChange = (uploadFile: { raw?: File }) => {
+  // 上传前仅做格式校验，避免错误文件提交。
   const file = uploadFile.raw
   if (!file) return
   if (!file.type.startsWith('image/')) {
@@ -159,6 +225,7 @@ const handleCoverChange = (uploadFile: { raw?: File }) => {
 }
 
 const resetForm = () => {
+  // 重置表单，保证“新增”活动使用干净状态。
   form.value = {
     title: '',
     activity_type: undefined,
@@ -182,6 +249,7 @@ const openCreateDialog = () => {
 }
 
 const openEditDialog = (row: Activity) => {
+  // 编辑时按活动详情回填表单。
   editingId.value = row.id
   form.value.title = row.title
   form.value.activity_type = row.activity_type || undefined
@@ -199,6 +267,7 @@ const openEditDialog = (row: Activity) => {
 }
 
 const buildFormData = () => {
+  // 统一构建 multipart/form-data，兼容图片上传。
   const payload = new FormData()
   payload.append('title', form.value.title)
   payload.append('activity_type', String(form.value.activity_type || ''))
@@ -222,6 +291,7 @@ const buildFormData = () => {
 }
 
 const submitForm = async () => {
+  // 提交前做前端关键校验，减少后端无效请求。
   if (!form.value.activity_type) {
     ElMessage.warning('请选择活动类型')
     return
@@ -250,6 +320,7 @@ const submitForm = async () => {
 }
 
 const removeActivity = async (id: number) => {
+  // 删除活动前二次确认。
   await ElMessageBox.confirm('确认删除该活动吗？', '提示', { type: 'warning' })
   try {
     await api.delete(`/activities/${id}/`)
@@ -261,6 +332,7 @@ const removeActivity = async (id: number) => {
 }
 
 const progressActivity = async (id: number, action: 'start' | 'finish') => {
+  // 管理员推进活动生命周期（开始/结束）。
   try {
     await api.post(`/activities/${id}/${action}/`)
     ElMessage.success(action === 'start' ? '活动已开始' : '活动已结束')
@@ -270,23 +342,46 @@ const progressActivity = async (id: number, action: 'start' | 'finish') => {
   }
 }
 
+const handleMobileCommand = async (row: Activity, command: string) => {
+  // 移动端下拉命令分发。
+  if (command === 'edit') {
+    openEditDialog(row)
+    return
+  }
+  if (command === 'delete') {
+    await removeActivity(row.id)
+    return
+  }
+  if (command === 'start') {
+    await progressActivity(row.id, 'start')
+    return
+  }
+  if (command === 'finish') {
+    await progressActivity(row.id, 'finish')
+  }
+}
+
 const loadActivities = async () => {
+  // 加载当前角色可管理活动。
   const { data } = await api.get('/activities/')
   activities.value = asList<Activity>(data)
 }
 
 const loadCommunities = async () => {
+  // 系统管理员创建活动时可指定发起社区。
   if (!userStore.isAdmin) return
   const { data } = await api.get('/communities/')
   communities.value = asList<Community>(data)
 }
 
 const loadActivityTypes = async () => {
+  // 活动类型用于表单下拉和“其他”类型判定。
   const { data } = await api.get('/activity-types/')
   activityTypes.value = asList<ActivityType>(data)
 }
 
 onMounted(async () => {
+  // 页面初始化并行加载数据源。
   await Promise.all([loadActivities(), loadCommunities(), loadActivityTypes()])
 })
 </script>

@@ -48,11 +48,13 @@ import { useUserStore } from '@/stores/user'
 import type { CommunityDistributionItem, OverviewStats, ServiceRankingItem } from '@/types'
 
 const userStore = useUserStore()
+// 概览统计、排行与分布数据。
 const overview = ref<OverviewStats | null>(null)
 const rankings = ref<ServiceRankingItem[]>([])
 const communityDistribution = ref<CommunityDistributionItem[]>([])
 
 const cards = computed(() => {
+  // 不同角色展示不同维度指标卡片。
   const data = overview.value || { role: userStore.role || 'volunteer' }
   if (userStore.isVolunteer) {
     return [
@@ -71,6 +73,7 @@ const cards = computed(() => {
 })
 
 const loadData = async () => {
+  // 先拉概览，再按角色补充排行与分布数据。
   const { data } = await api.get('/stats/overview/')
   overview.value = data
   if (userStore.isCommunityAdmin || userStore.isAdmin) {

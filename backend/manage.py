@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Django's command-line utility for administrative tasks."""
+"""后端管理命令入口脚本。"""
 import os
 import sys
 
 
 def main():
-    """Run administrative tasks."""
+    """执行后端管理命令。"""
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "volunteer_system.settings")
     try:
         from django.core.management import execute_from_command_line

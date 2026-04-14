@@ -18,10 +18,24 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="说明" min-width="220" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" :width="isMobile ? 88 : 200" :fixed="isMobile ? undefined : 'right'">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="removeType(row.id)">删除</el-button>
+            <template v-if="!isMobile">
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" @click="removeType(row.id)">删除</el-button>
+            </template>
+            <el-dropdown v-else trigger="click" @command="(command: string) => handleMobileCommand(row, command)">
+              <el-button link type="primary">
+                操作
+                <el-icon><MoreFilled /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item command="delete">删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -55,7 +69,10 @@ import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { asList } from '@/utils/request'
 import type { ActivityType } from '@/types'
+import { useIsMobile } from '@/composables/useIsMobile'
 
+const { isMobile } = useIsMobile()
+// 活动类型列表与弹窗状态。
 const types = ref<ActivityType[]>([])
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
@@ -69,11 +86,13 @@ const form = ref({
 })
 
 const loadTypes = async () => {
+  // 拉取活动类型字典。
   const { data } = await api.get('/activity-types/')
   types.value = asList<ActivityType>(data)
 }
 
 const resetForm = () => {
+  // 重置为新增类型默认值。
   form.value = {
     name: '',
     sort_order: 100,
@@ -89,6 +108,7 @@ const openCreate = () => {
 }
 
 const openEdit = (row: ActivityType) => {
+  // 编辑时回填类型信息。
   editingId.value = row.id
   form.value = {
     name: row.name,
@@ -100,6 +120,7 @@ const openEdit = (row: ActivityType) => {
 }
 
 const submit = async () => {
+  // 类型名称前端去空白并校验。
   const name = form.value.name.trim()
   if (!name) {
     ElMessage.warning('请输入活动类型名称')
@@ -131,6 +152,7 @@ const submit = async () => {
 }
 
 const removeType = async (id: number) => {
+  // 删除前二次确认。
   await ElMessageBox.confirm('确认删除该活动类型吗？删除后仅影响后续可选项。', '提示', { type: 'warning' })
   try {
     await api.delete(`/activity-types/${id}/`)
@@ -138,6 +160,17 @@ const removeType = async (id: number) => {
     await loadTypes()
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '删除失败')
+  }
+}
+
+const handleMobileCommand = async (row: ActivityType, command: string) => {
+  // 移动端操作菜单命令分发。
+  if (command === 'edit') {
+    openEdit(row)
+    return
+  }
+  if (command === 'delete') {
+    await removeType(row.id)
   }
 }
 
