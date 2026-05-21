@@ -79,6 +79,14 @@ DATABASES = {
         # 当前使用 SQLite 便于本地快速启动。
         "NAME": BASE_DIR / "db.sqlite3",
     }
+    # "default": {
+    #     "ENGINE": "django.db.backends.mysql",
+    #     "NAME": "fast-try",
+    #     "USER": "root",
+    #     "PASSWORD": "",
+    #     "HOST": "127.0.0.1",
+    #     "PORT": "3306",
+    # },
 }
 
 
